@@ -1,7 +1,21 @@
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 const prisma = new PrismaClient();
+const here = path.dirname(fileURLToPath(import.meta.url));
+const uploadDir = path.resolve(process.env.UPLOAD_DIR || './data');
+fs.mkdirSync(path.join(uploadDir, 'previews'), { recursive: true });
+
+function seedPreview(slug) {
+  const src = path.join(here, 'previews', `${slug}.jpg`);
+  if (!fs.existsSync(src)) return null;
+  const dest = path.join(uploadDir, 'previews', `seed-${slug}.jpg`);
+  fs.copyFileSync(src, dest);
+  return dest;
+}
 
 const types = [
   ['Necklace', 1], ['Ring', 2], ['Earring', 3], ['Bracelet & Bangle', 4],
@@ -35,7 +49,10 @@ async function main() {
     await prisma.jewelleryType.upsert({ where: { slug: slug(name) }, create: { name, slug: slug(name), sort }, update: { sort } });
   }
   for (const [name, promptTemplate, sort] of styles) {
-    await prisma.style.upsert({ where: { slug: slug(name) }, create: { name, slug: slug(name), promptTemplate, sort }, update: { promptTemplate, sort } });
+    const s = slug(name);
+    const existing = await prisma.style.findUnique({ where: { slug: s } });
+    const previewImage = existing?.previewImage || seedPreview(s);
+    await prisma.style.upsert({ where: { slug: s }, create: { name, slug: s, promptTemplate, sort, previewImage }, update: { promptTemplate, sort } });
   }
   console.log(`seed: ${types.length} types, ${styles.length} styles ready`);
 }

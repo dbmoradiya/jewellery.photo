@@ -10,7 +10,12 @@ r.get('/types', async (_req, res) => {
 
 r.get('/styles', async (_req, res) => {
   const styles = await prisma.style.findMany({ where: { active: true }, orderBy: [{ sort: 'asc' }, { name: 'asc' }] });
-  res.json({ styles });
+  res.json({
+    styles: styles.map((s) => ({
+      ...s,
+      previewUrl: s.previewImage ? `/api/files/previews/${s.previewImage.split('/').pop()}` : null,
+    })),
+  });
 });
 
 export default r;

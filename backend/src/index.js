@@ -18,7 +18,8 @@ app.use('/api/catalog', catalogRoutes);
 app.use('/api/generations', generationRoutes);
 app.use('/api/admin', adminRoutes);
 
-// Stored files require a logged-in account.
+// Style previews are public marketing assets; uploads and outputs require a logged-in account.
+app.use('/api/files/previews', express.static(path.join(config.uploadDir, 'previews'), { fallthrough: false, index: false }));
 app.use('/api/files', authRequired, express.static(config.uploadDir, { fallthrough: false, index: false }));
 
 app.use((err, _req, res, _next) => {
