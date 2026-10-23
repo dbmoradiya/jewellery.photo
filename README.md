@@ -71,11 +71,27 @@ These need the owner's own external accounts and are intentionally inert until c
 - **Google sign-in** — implemented end to end and config-gated: with `GOOGLE_CLIENT_ID`
   set, the frontend renders the Google button (loaded from `/api/auth/config`) and the
   backend verifies the Google ID token server-side against Google's keys with the client
-  id as audience, then creates/links the account by verified email. Without
+  id as audience, then creates the account by verified email. Without
   `GOOGLE_CLIENT_ID` the route fails closed with 501 and the button never renders.
-- **Paid credit top-ups** — every balance change is recorded in an auditable credit
-  ledger (`CreditTransaction`: signup grant, admin adjustment, generation spend, failure
-  refund; members can read their own ledger at `GET /api/auth/ledger`). The payment
-  boundary (`GET /api/payments/status`, `POST /api/payments/topup`) fails closed with 501
-  until the owner's gateway credentials (e.g. Razorpay) are configured. No payment flow
-  is active in this build and nothing can charge.
+  Account-linking policy: a Google identity is never silently merged into an existing
+  password account on an email match alone (password-account emails are unverified).
+  If the email exists, sign-in returns 409 `LINK_REQUIRED`; the member signs in with
+  their password and links Google explicitly via `POST /api/auth/google/link`, which
+  requires the verified Google email to match the account email.
+- **Paid credit top-ups (Razorpay)** — implemented and config-gated. With
+  `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET` set, `POST /api/payments/topup` creates a real
+  gateway order (`PRICE_PER_CREDIT_INR` sets pricing), `POST /api/payments/verify`
+  validates the checkout HMAC signature, and `POST /api/payments/webhook` validates the
+  raw-body webhook signature (`RAZORPAY_WEBHOOK_SECRET`). Settlement is idempotent:
+  a paid order credits exactly once whether confirmed by callback, webhook, or replays.
+  Every balance change lands in the auditable credit ledger (`CreditTransaction`:
+  signup grant, admin adjustment, generation spend, failure refund, top-up purchase;
+  members read their own at `GET /api/auth/ledger`). Without gateway keys every payment
+  route fails closed with 501 and nothing can charge. Live payment end-to-end remains
+  unverified until the owner's real Razorpay account exists.
+- **Tests** — `cd backend && NODE_ENV=test node --test test/integrations.test.js` runs
+  the boundary suite against a mocked Google verifier and mocked Razorpay order API:
+  forged-token rejection, new-account creation, linking policy (409, explicit link,
+  email mismatch), order creation, signature acceptance/rejection, idempotent double
+  settlement, webhook signature + replay, ledger invariant, and the unconfigured
+  fail-closed path.

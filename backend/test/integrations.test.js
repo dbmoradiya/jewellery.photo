@@ -1,34 +1,121 @@
-// Boundary tests for the config-gated integrations. Run: NODE_ENV=test node --test test/
+// Integration boundary tests with a mocked Google identity verifier and a mocked
+// Razorpay order endpoint. No real external calls, no real money. Run:
+//   NODE_ENV=test node --test test/integrations.test.js
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+
 process.env.NODE_ENV = 'test';
 process.env.GOOGLE_CLIENT_ID = 'test-client-id.apps.googleusercontent.com';
+process.env.RAZORPAY_KEY_ID = 'rzp_test_fake';
+process.env.RAZORPAY_KEY_SECRET = 'fake-secret';
+process.env.RAZORPAY_WEBHOOK_SECRET = 'fake-webhook-secret';
 
 const { setGoogleVerifierForTests } = await import('../src/services/googleAuth.js');
-const { paymentsStatus, createTopUpOrder } = await import('../src/services/payments.js');
+const { setRazorpayOrderFnForTests } = await import('../src/services/razorpay.js');
+const { app } = await import('../src/index.js');
 
-test('google verifier boundary: payload comes only from the verifier', async () => {
+const srv = app.listen(0);
+await new Promise((r) => srv.once('listening', r));
+const base = `http://127.0.0.1:${srv.address().port}`;
+const J = { 'Content-Type': 'application/json' };
+const uniq = Date.now();
+
+test.after(() => srv.close());
+
+async function api(path, { method = 'GET', body, token, raw } = {}) {
+  const resp = await fetch(base + path, {
+    method,
+    headers: { ...(raw ? {} : J), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: raw ?? (body ? JSON.stringify(body) : undefined),
+  });
+  return { status: resp.status, data: await resp.json().catch(() => null) };
+}
+
+test('google sign-in: verifier boundary and new-account creation', async () => {
   setGoogleVerifierForTests(async (cred) => {
-    if (cred === 'good') return { sub: 'g-123', email: 'Buyer@Gmail.com', email_verified: true, name: 'Buyer' };
+    if (cred === 'good-new') return { sub: 'g-new-1', email: `g${uniq}@gmail.com`, email_verified: true, name: 'G' };
     throw new Error('bad token');
   });
-  const { verifyGoogleCredential, googleConfigured } = await import('../src/services/googleAuth.js');
-  assert.equal(googleConfigured(), true);
-  const ok = await verifyGoogleCredential('good');
-  assert.equal(ok.sub, 'g-123');
-  await assert.rejects(() => verifyGoogleCredential('forged'));
+  const forged = await api('/api/auth/google', { method: 'POST', body: { credential: 'forged' } });
+  assert.equal(forged.status, 401);
+  const ok = await api('/api/auth/google', { method: 'POST', body: { credential: 'good-new' } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.data.user.credits, 2);
 });
 
-test('google unverified email payload is rejectable shape', async () => {
-  setGoogleVerifierForTests(async () => ({ sub: 'g-9', email: 'x@x.com', email_verified: false }));
-  const { verifyGoogleCredential } = await import('../src/services/googleAuth.js');
-  const p = await verifyGoogleCredential('whatever');
-  assert.notEqual(p.email_verified, true); // route rejects this
+test('google account-linking policy: no silent merge into password accounts', async () => {
+  const email = `link${uniq}@test.com`;
+  await api('/api/auth/register', { method: 'POST', body: { email, password: 'test1234', name: 'L' } });
+  setGoogleVerifierForTests(async () => ({ sub: 'g-link-1', email, email_verified: true }));
+  // Silent merge must be refused:
+  const attempt = await api('/api/auth/google', { method: 'POST', body: { credential: 'any' } });
+  assert.equal(attempt.status, 409);
+  assert.equal(attempt.data.code, 'LINK_REQUIRED');
+  // Explicit link after password login works:
+  const login = await api('/api/auth/login', { method: 'POST', body: { email, password: 'test1234' } });
+  const link = await api('/api/auth/google/link', { method: 'POST', body: { credential: 'any' }, token: login.data.token });
+  assert.equal(link.status, 200);
+  // Google sign-in now resolves the same account:
+  const again = await api('/api/auth/google', { method: 'POST', body: { credential: 'any' } });
+  assert.equal(again.status, 200);
+  assert.equal(again.data.user.email, email);
+  // Linking a Google account whose email differs is refused:
+  setGoogleVerifierForTests(async () => ({ sub: 'g-other', email: 'other@x.com', email_verified: true }));
+  const mismatch = await api('/api/auth/google/link', { method: 'POST', body: { credential: 'any' }, token: login.data.token });
+  assert.equal(mismatch.status, 400);
 });
 
-test('payments boundary: disabled without credentials, never charges', async () => {
+test('payments: topup order, signature check, idempotent settlement, webhook', async () => {
+  const email = `pay${uniq}@test.com`;
+  const reg = await api('/api/auth/register', { method: 'POST', body: { email, password: 'test1234', name: 'P' } });
+  const token = reg.data.token;
+  setRazorpayOrderFnForTests(async ({ amount, currency }) => {
+    assert.equal(currency, 'INR');
+    return { id: `order_${uniq}`, amount, currency, status: 'created' };
+  });
+  const topup = await api('/api/payments/topup', { method: 'POST', body: { credits: 3 }, token });
+  assert.equal(topup.status, 201);
+  assert.equal(topup.data.amountInr, 300);
+  const orderId = topup.data.orderId;
+  const sig = crypto.createHmac('sha256', 'fake-secret').update(`${orderId}|pay_1`).digest('hex');
+  const bad = await api('/api/payments/verify', { method: 'POST', body: { orderId, paymentId: 'pay_1', signature: 'deadbeef' }, token });
+  assert.equal(bad.status, 400);
+  const v1 = await api('/api/payments/verify', { method: 'POST', body: { orderId, paymentId: 'pay_1', signature: sig }, token });
+  assert.equal(v1.status, 200);
+  assert.equal(v1.data.credited, true);
+  const v2 = await api('/api/payments/verify', { method: 'POST', body: { orderId, paymentId: 'pay_1', signature: sig }, token });
+  assert.equal(v2.data.credited, false); // replay does not double-credit
+  let me = await api('/api/auth/me', { token });
+  assert.equal(me.data.user.credits, 2 + 3);
+
+  // Webhook path: create a second order, settle via signed webhook, replay it.
+  setRazorpayOrderFnForTests(async () => ({ id: `order_${uniq}_b`, amount: 10000, currency: 'INR', status: 'created' }));
+  const t2 = await api('/api/payments/topup', { method: 'POST', body: { credits: 1 }, token });
+  const raw = JSON.stringify({ event: 'payment.captured', payload: { payment: { entity: { id: 'pay_2', order_id: t2.data.orderId } } } });
+  const wsig = crypto.createHmac('sha256', 'fake-webhook-secret').update(raw).digest('hex');
+  const w1 = await api('/api/payments/webhook', { method: 'POST', raw, token: null });
+  assert.equal(w1.status, 400); // unsigned webhook rejected
+  const w2 = await fetch(base + '/api/payments/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-razorpay-signature': wsig }, body: raw });
+  assert.equal(w2.status, 200);
+  const w3 = await fetch(base + '/api/payments/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-razorpay-signature': wsig }, body: raw });
+  assert.equal(w3.status, 200); // replay safe
+  me = await api('/api/auth/me', { token });
+  assert.equal(me.data.user.credits, 2 + 3 + 1);
+
+  // Ledger invariant: every change recorded, sum == balance.
+  const ledger = await api('/api/auth/ledger', { token });
+  const sum = ledger.data.transactions.reduce((a, t) => a + t.delta, 0);
+  assert.equal(sum, me.data.user.credits);
+  assert.ok(ledger.data.transactions.some((t) => t.reason === 'TOPUP_PURCHASE'));
+});
+
+test('payments boundary without keys fails closed', async () => {
   delete process.env.RAZORPAY_KEY_ID;
   delete process.env.RAZORPAY_KEY_SECRET;
-  assert.deepEqual(paymentsStatus(), { enabled: false, provider: 'none' });
-  await assert.rejects(() => createTopUpOrder(), /not configured/);
+  const s = await api('/api/payments/status');
+  assert.deepEqual(s.data, { enabled: false, provider: 'none' });
+  const reg = await api('/api/auth/register', { method: 'POST', body: { email: `np${uniq}@test.com`, password: 'test1234', name: 'N' } });
+  const t = await api('/api/payments/topup', { method: 'POST', body: { credits: 1 }, token: reg.data.token });
+  assert.equal(t.status, 501);
 });

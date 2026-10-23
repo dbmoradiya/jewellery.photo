@@ -32,6 +32,7 @@ model User {
   createdAt    DateTime     @default(now())
   generations  Generation[]
   transactions CreditTransaction[]
+  paymentOrders PaymentOrder[]
 }
 
 model CreditTransaction {
@@ -80,6 +81,20 @@ model Generation {
   demo        Boolean          @default(true)
   createdAt   DateTime         @default(now())
   completedAt DateTime?
+}
+
+model PaymentOrder {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  provider  String   @default("razorpay")
+  orderId   String   @unique
+  paymentId String?
+  amountInr Int
+  credits   Int
+  status    String   @default("CREATED") // CREATED | PAID | FAILED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Setting {

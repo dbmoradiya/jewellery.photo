@@ -6,12 +6,13 @@ import authRoutes from './routes/auth.js';
 import catalogRoutes from './routes/catalog.js';
 import generationRoutes from './routes/generations.js';
 import adminRoutes from './routes/admin.js';
-import paymentRoutes from './routes/payments.js';
+import paymentRoutes, { webhookRouter as paymentWebhook } from './routes/payments.js';
 import { authRequired } from './auth.js';
 import { prisma } from './db.js';
 
 const app = express();
 app.use(cors());
+app.use('/api/payments/webhook', express.raw({ type: 'application/json' }), paymentWebhook);
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'jewellery.photo' }));
@@ -43,4 +44,5 @@ app.use((err, _req, res, _next) => {
   res.status(err?.status || 500).json({ error: err?.message || 'Server error' });
 });
 
-app.listen(config.port, () => console.log(`jewellery.photo backend listening on :${config.port}`));
+export { app };
+if (process.env.NODE_ENV !== 'test') app.listen(config.port, () => console.log(`jewellery.photo backend listening on :${config.port}`));
