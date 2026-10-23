@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.js';
 import catalogRoutes from './routes/catalog.js';
 import generationRoutes from './routes/generations.js';
 import adminRoutes from './routes/admin.js';
+import paymentRoutes from './routes/payments.js';
 import { authRequired } from './auth.js';
 import { prisma } from './db.js';
 
@@ -18,6 +19,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/generations', generationRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Style previews are public marketing assets.
 app.use('/api/files/previews', express.static(path.join(config.uploadDir, 'previews'), { fallthrough: false, index: false }));

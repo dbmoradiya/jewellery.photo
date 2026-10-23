@@ -22,6 +22,10 @@ export function AuthProvider({ children }) {
     setToken(data.token); setUser(data.user); return data.user;
   }, []);
 
+  const loginWithGoogle = useCallback(async (credential) => {
+    const data = await api('/auth/google', { method: 'POST', body: { credential } });
+    setToken(data.token); setUser(data.user); return data.user;
+  }, []);
   const register = useCallback(async (payload) => {
     const data = await api('/auth/register', { method: 'POST', body: payload });
     setToken(data.token); setUser(data.user); return data.user;
@@ -32,7 +36,7 @@ export function AuthProvider({ children }) {
     try { const { user } = await api('/auth/me'); setUser(user); } catch { /* keep */ }
   }, []);
 
-  return <AuthCtx.Provider value={{ user, loading, login, register, logout, refresh, setUser }}>{children}</AuthCtx.Provider>;
+  return <AuthCtx.Provider value={{ user, loading, login, loginWithGoogle, register, logout, refresh, setUser }}>{children}</AuthCtx.Provider>;
 }
 
 export const useAuth = () => useContext(AuthCtx);

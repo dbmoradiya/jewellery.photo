@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth.jsx';
+import { GoogleButton } from '../google.jsx';
 import authImg from '../assets/auth.jpg';
 
 export default function Register() {
-  const { register } = useAuth();
+  const { register, loginWithGoogle } = useAuth();
   const nav = useNavigate();
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' });
   const [error, setError] = useState('');
@@ -51,6 +52,7 @@ export default function Register() {
           {error && <div className="form-error">{error}</div>}
           <button className="btn btn--block" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button>
         </form>
+        <GoogleButton onCredential={async (cred) => { await loginWithGoogle(cred); nav('/studio'); }} onError={setError} />
         <div className="auth__switch">Already have an account? <Link to="/login">Sign in</Link></div>
       </div>
     </div>

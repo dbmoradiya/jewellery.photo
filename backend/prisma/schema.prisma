@@ -22,7 +22,8 @@ enum GenerationStatus {
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
-  passwordHash String
+  passwordHash String?
+  googleId     String?      @unique
   name         String       @default("")
   phone        String       @default("")
   role         Role         @default(USER)
@@ -30,6 +31,17 @@ model User {
   disabled     Boolean      @default(false)
   createdAt    DateTime     @default(now())
   generations  Generation[]
+  transactions CreditTransaction[]
+}
+
+model CreditTransaction {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  delta        Int
+  reason       String
+  generationId String?
+  createdAt    DateTime    @default(now())
 }
 
 model JewelleryType {

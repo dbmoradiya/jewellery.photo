@@ -68,8 +68,14 @@ user management (credits, roles, disable), generation log, AI provider settings.
 
 These need the owner's own external accounts and are intentionally inert until configured:
 
-- **Google sign-in** — `POST /api/auth/google` exists but returns 501 until
-  `GOOGLE_CLIENT_ID` is set (requires the owner's Google Cloud OAuth consent setup).
-- **Paid credit top-ups** — the credits ledger is in place and admins grant credits today;
-  a payment gateway (e.g. Razorpay) can be wired to the same ledger once the owner's
-  merchant account exists. No payment flow is active in this build.
+- **Google sign-in** — implemented end to end and config-gated: with `GOOGLE_CLIENT_ID`
+  set, the frontend renders the Google button (loaded from `/api/auth/config`) and the
+  backend verifies the Google ID token server-side against Google's keys with the client
+  id as audience, then creates/links the account by verified email. Without
+  `GOOGLE_CLIENT_ID` the route fails closed with 501 and the button never renders.
+- **Paid credit top-ups** — every balance change is recorded in an auditable credit
+  ledger (`CreditTransaction`: signup grant, admin adjustment, generation spend, failure
+  refund; members can read their own ledger at `GET /api/auth/ledger`). The payment
+  boundary (`GET /api/payments/status`, `POST /api/payments/topup`) fails closed with 501
+  until the owner's gateway credentials (e.g. Razorpay) are configured. No payment flow
+  is active in this build and nothing can charge.

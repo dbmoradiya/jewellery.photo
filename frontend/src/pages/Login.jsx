@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth.jsx';
+import { GoogleButton } from '../google.jsx';
 import authImg from '../assets/auth.jpg';
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
   const [email, setEmail] = useState('');
@@ -44,6 +45,7 @@ export default function Login() {
           {error && <div className="form-error">{error}</div>}
           <button className="btn btn--block" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
         </form>
+        <GoogleButton onCredential={async (cred) => { const user = await loginWithGoogle(cred); nav(loc.state?.from || (user.role === 'ADMIN' ? '/admin' : '/studio')); }} onError={setError} />
         <div className="auth__switch">New to Jewellery.photo? <Link to="/register">Create an account</Link></div>
       </div>
     </div>

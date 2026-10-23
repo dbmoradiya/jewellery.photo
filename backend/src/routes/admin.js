@@ -122,11 +122,13 @@ r.patch('/users/:id', async (req, res) => {
   if (target.id === req.user.id && (disabled === true || (role && role !== 'ADMIN')))
     return res.status(400).json({ error: 'You cannot disable or demote your own admin account' });
   const data = {};
-  if (credits !== undefined) data.credits = Math.max(0, parseInt(credits) || 0);
-  if (addCredits !== undefined) data.credits = target.credits + Math.max(0, parseInt(addCredits) || 0);
+  let delta = null;
+  if (credits !== undefined) { data.credits = Math.max(0, parseInt(credits) || 0); delta = data.credits - target.credits; }
+  if (addCredits !== undefined) { data.credits = target.credits + Math.max(0, parseInt(addCredits) || 0); delta = data.credits - target.credits; }
   if (disabled !== undefined) data.disabled = Boolean(disabled);
   if (role !== undefined && ['USER', 'ADMIN'].includes(role)) data.role = role;
   const user = await prisma.user.update({ where: { id: target.id }, data });
+  if (delta) await prisma.creditTransaction.create({ data: { userId: target.id, delta, reason: 'ADMIN_ADJUST' } });
   res.json({ user: { id: user.id, email: user.email, role: user.role, credits: user.credits, disabled: user.disabled } });
 });
 

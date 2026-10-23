@@ -59,6 +59,7 @@ r.post('/', authRequired, upload.single('photo'), async (req, res) => {
 
     // Atomically spend one credit; rejects when balance is insufficient even under concurrency.
     const spent = await prisma.user.updateMany({ where: { id: req.user.id, credits: { gte: 1 } }, data: { credits: { decrement: 1 } } });
+    if (spent.count > 0) await prisma.creditTransaction.create({ data: { userId: req.user.id, delta: -1, reason: 'GENERATION_SPEND' } });
     if (spent.count === 0) { await fs.unlink(req.file.path).catch(() => {}); return res.status(402).json({ error: 'You are out of credits. Ask the admin to top up your account.' }); }
 
     const generation = await prisma.generation.create({
@@ -93,6 +94,7 @@ async function processGeneration(id) {
     await prisma.$transaction([
       prisma.generation.update({ where: { id }, data: { status: 'FAILED', error: e.message || 'Generation failed' } }),
       prisma.user.update({ where: { id: g.userId }, data: { credits: { increment: 1 } } }),
+      prisma.creditTransaction.create({ data: { userId: g.userId, delta: 1, reason: 'GENERATION_REFUND', generationId: g.id } }),
     ]);
   }
 }
