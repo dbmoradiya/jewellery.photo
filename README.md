@@ -10,7 +10,40 @@ An admin portal manages styles (designs + AI prompts), jewellery types, users an
 - `backend/` — Node.js (Express) + Prisma + PostgreSQL
 - `docker-compose.yml` — db + backend + frontend (nginx), one command deploy
 
-## Run with Docker (recommended)
+## Run locally (verified path)
+
+Needs Node 18+ and a PostgreSQL database (local install, Docker, or any hosted URL).
+
+```bash
+# 1. Configure the backend
+cd backend
+cp .env.example .env
+# edit .env: DATABASE_URL, a long random JWT_SECRET,
+#            ADMIN_EMAIL + ADMIN_PASSWORD (min 10 chars - the demo admin is created
+#            from these at seed time; there is no default password),
+#            PORT=8081 (the frontend dev proxy expects this port)
+
+# 2. Backend: install, create tables, seed catalog + admin, start
+npm install
+npx prisma db push
+npm run seed
+npm run dev          # serves the API on http://localhost:8081
+
+# 3. Frontend (second terminal)
+cd frontend
+npm install
+npm run dev          # open the printed URL, usually http://localhost:5173
+```
+
+The frontend dev server proxies `/api` to `localhost:8081`. Sign in with the
+`ADMIN_EMAIL`/`ADMIN_PASSWORD` from `backend/.env` to reach the admin portal at `/admin`,
+or register a fresh member account (2 free credits) from the landing page.
+
+## Run with Docker (single command, untested build)
+
+`docker-compose.yml` + Dockerfiles are written for a one-command deploy
+(db + backend + frontend behind nginx), but they have NOT been built/run yet - treat
+this path as untested until the first `docker compose up --build` succeeds on your machine:
 
 ```bash
 cp .env.example .env   # fill DB_PASSWORD, JWT_SECRET, ADMIN_PASSWORD
@@ -18,17 +51,6 @@ docker compose up --build
 ```
 
 Open http://localhost:8080 — sign in with the admin credentials from `.env`.
-
-## Local development
-
-```bash
-# terminal 1: backend (needs a Postgres + backend/.env, see backend/.env.example)
-cd backend && npm install && npx prisma db push && npm run seed && npm run dev
-# terminal 2: frontend
-cd frontend && npm install && npm run dev
-```
-
-Frontend dev server proxies `/api` to `localhost:8081`.
 
 ## AI generation
 
