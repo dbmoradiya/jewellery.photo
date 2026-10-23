@@ -36,4 +36,12 @@ r.post('/login', async (req, res) => {
 
 r.get('/me', authRequired, (req, res) => res.json({ user: publicUser(req.user) }));
 
+// Google sign-in is planned (matches the reference product). It activates only when the
+// deployment sets GOOGLE_CLIENT_ID; until then it fails closed with a clear message.
+r.post('/google', (_req, res) => {
+  if (!process.env.GOOGLE_CLIENT_ID)
+    return res.status(501).json({ error: 'Google sign-in is not configured on this deployment' });
+  res.status(501).json({ error: 'Google sign-in is not implemented yet' });
+});
+
 export default r;

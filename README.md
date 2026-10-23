@@ -49,3 +49,27 @@ New members get `FREE_CREDITS` on sign up. Admins top up credits in Admin → Us
 
 `/admin` — dashboard, styles & prompt templates (with preview images), jewellery types,
 user management (credits, roles, disable), generation log, AI provider settings.
+
+## Security model
+
+- **No default credentials.** The seed creates an admin only when `ADMIN_EMAIL` and
+  `ADMIN_PASSWORD` (min 10 chars) are both set; otherwise it skips with a warning.
+  `docker-compose.yml` requires `ADMIN_PASSWORD` to be set.
+- Passwords are bcrypt-hashed; sessions are 30-day JWTs; disabled accounts are rejected
+  at login and on every authenticated request.
+- Uploads and generated outputs are private per member: file reads check generation
+  ownership (admin excepted). Style previews are the only public files.
+- Uploads are limited to 15MB JPG/PNG/WebP and are re-validated as real images server-side.
+- Credits are spent atomically at submit (race-safe) and automatically refunded when a
+  generation fails. New members get `FREE_CREDITS`; registration can never set a role.
+- The AI provider API key is write-only in Admin → Settings and is never returned by the API.
+
+## Planned integrations (config-gated, not yet active)
+
+These need the owner's own external accounts and are intentionally inert until configured:
+
+- **Google sign-in** — `POST /api/auth/google` exists but returns 501 until
+  `GOOGLE_CLIENT_ID` is set (requires the owner's Google Cloud OAuth consent setup).
+- **Paid credit top-ups** — the credits ledger is in place and admins grant credits today;
+  a payment gateway (e.g. Razorpay) can be wired to the same ledger once the owner's
+  merchant account exists. No payment flow is active in this build.

@@ -36,14 +36,19 @@ const styles = [
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
 async function main() {
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@jewellery.photo';
-  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-  const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
-  if (!existing) {
-    await prisma.user.create({
-      data: { email: adminEmail, passwordHash: await bcrypt.hash(adminPassword, 10), name: 'Admin', role: 'ADMIN', credits: 100 },
-    });
-    console.log(`seed: created admin ${adminEmail}`);
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (adminEmail && adminPassword) {
+    if (adminPassword.length < 10) throw new Error('ADMIN_PASSWORD must be at least 10 characters');
+    const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
+    if (!existing) {
+      await prisma.user.create({
+        data: { email: adminEmail, passwordHash: await bcrypt.hash(adminPassword, 10), name: 'Admin', role: 'ADMIN', credits: 100 },
+      });
+      console.log(`seed: created admin ${adminEmail}`);
+    }
+  } else {
+    console.warn('seed: ADMIN_EMAIL/ADMIN_PASSWORD not set - skipping admin bootstrap (no default credentials are ever created).');
   }
   for (const [name, sort] of types) {
     await prisma.jewelleryType.upsert({ where: { slug: slug(name) }, create: { name, slug: slug(name), sort }, update: { sort } });

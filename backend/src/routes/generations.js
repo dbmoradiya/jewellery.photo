@@ -7,6 +7,7 @@ import { prisma } from '../db.js';
 import { config } from '../config.js';
 import { authRequired } from '../auth.js';
 import { generateImage, getProviderConfig } from '../services/provider.js';
+import sharp from 'sharp';
 
 const r = Router();
 const upload = multer({
@@ -52,7 +53,13 @@ r.post('/', authRequired, upload.single('photo'), async (req, res) => {
     ]);
     if (!type) return res.status(400).json({ error: 'Choose a jewellery type' });
     if (!style) return res.status(400).json({ error: 'Choose a style' });
-    if (req.user.credits < 1) return res.status(402).json({ error: 'You are out of credits. Ask the admin to top up your account.' });
+    // Validate the upload actually parses as an image (client mimetype is not trusted).
+    try { await sharp(req.file.path).metadata(); }
+    catch { await fs.unlink(req.file.path).catch(() => {}); return res.status(400).json({ error: 'The uploaded file is not a readable image' }); }
+
+    // Atomically spend one credit; rejects when balance is insufficient even under concurrency.
+    const spent = await prisma.user.updateMany({ where: { id: req.user.id, credits: { gte: 1 } }, data: { credits: { decrement: 1 } } });
+    if (spent.count === 0) { await fs.unlink(req.file.path).catch(() => {}); return res.status(402).json({ error: 'You are out of credits. Ask the admin to top up your account.' }); }
 
     const generation = await prisma.generation.create({
       data: { userId: req.user.id, typeId: type.id, styleId: style.id, inputPath: req.file.path },
@@ -77,15 +84,16 @@ async function processGeneration(id) {
     const outName = `${id}.jpg`;
     const outPath = path.join(config.uploadDir, 'outputs', outName);
     await fs.writeFile(outPath, buffer);
-    await prisma.$transaction([
-      prisma.generation.update({
-        where: { id },
-        data: { status: 'COMPLETED', outputPath: outPath, provider, demo, completedAt: new Date() },
-      }),
-      prisma.user.update({ where: { id: g.userId }, data: { credits: { decrement: 1 } } }),
-    ]);
+    await prisma.generation.update({
+      where: { id },
+      data: { status: 'COMPLETED', outputPath: outPath, provider, demo, completedAt: new Date() },
+    });
   } catch (e) {
-    await prisma.generation.update({ where: { id }, data: { status: 'FAILED', error: e.message || 'Generation failed' } });
+    // Failure refunds the credit spent at submit.
+    await prisma.$transaction([
+      prisma.generation.update({ where: { id }, data: { status: 'FAILED', error: e.message || 'Generation failed' } }),
+      prisma.user.update({ where: { id: g.userId }, data: { credits: { increment: 1 } } }),
+    ]);
   }
 }
 
