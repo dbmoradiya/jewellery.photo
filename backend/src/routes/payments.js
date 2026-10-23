@@ -3,6 +3,7 @@ import { authRequired } from '../auth.js';
 import { prisma } from '../db.js';
 import {
   razorpayConfigured, pricePerCreditInr, razorpayCreateOrder, verifyPaymentSignature,
+  razorpayFetchPayment,
 } from '../services/razorpay.js';
 import { settleOrderPaid } from '../services/topups.js';
 
@@ -35,7 +36,19 @@ r.post('/topup', authRequired, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Checkout completion callback: verify the gateway signature, then settle idempotently.
+// Shared gateway-truth check: the payment must exist at the gateway, be captured,
+// belong to this order, and match the recorded amount and currency exactly.
+async function assertPaymentMatchesOrder({ payment, order }) {
+  if (!payment) return 'Payment could not be confirmed with the gateway';
+  if (payment.status !== 'captured') return `Payment is not captured (status: ${payment.status || 'unknown'})`;
+  if (payment.order_id !== order.orderId) return 'Payment does not belong to this order';
+  if (payment.amount !== order.amountInr * 100) return 'Paid amount does not match the order';
+  if (String(payment.currency).toUpperCase() !== 'INR') return 'Paid currency does not match the order';
+  return null;
+}
+
+// Checkout completion callback: signature, ownership, then gateway-truth checks,
+// then idempotent settlement.
 r.post('/verify', authRequired, async (req, res, next) => {
   try {
     const { orderId, paymentId, signature } = req.body || {};
@@ -43,7 +56,12 @@ r.post('/verify', authRequired, async (req, res, next) => {
       return res.status(400).json({ error: 'Missing payment confirmation details' });
     if (!verifyPaymentSignature({ orderId, paymentId, signature }))
       return res.status(400).json({ error: 'Payment signature could not be verified' });
-    const result = await settleOrderPaid({ orderId, paymentId });
+    const order = await prisma.paymentOrder.findUnique({ where: { orderId: String(orderId) } });
+    if (!order || order.userId !== req.user.id)
+      return res.status(404).json({ error: 'Unknown payment order' });
+    const mismatch = await assertPaymentMatchesOrder({ payment: await razorpayFetchPayment(String(paymentId)), order });
+    if (mismatch) return res.status(400).json({ error: mismatch });
+    const result = await settleOrderPaid({ orderId: order.orderId, paymentId: String(paymentId) });
     res.json({ ok: true, credited: result.credited, credits: result.order.credits });
   } catch (e) { next(e); }
 });
@@ -62,7 +80,18 @@ webhookRouter.post('/', async (req, res) => {
   try { event = JSON.parse(raw); } catch { return res.status(400).json({ error: 'Invalid webhook payload' }); }
   if (event?.event === 'payment.captured') {
     const p = event?.payload?.payment?.entity || {};
-    if (p.order_id) await settleOrderPaid({ orderId: p.order_id, paymentId: p.id });
+    if (p.order_id) {
+      const order = await prisma.paymentOrder.findUnique({ where: { orderId: String(p.order_id) } });
+      // The webhook event itself asserts capture; still verify amount/currency/binding
+      // against the local order before crediting. Unknown orders are acknowledged
+      // without settlement so the gateway stops retrying.
+      if (order) {
+        const mismatch = p.amount === order.amountInr * 100 && String(p.currency).toUpperCase() === 'INR'
+          ? null
+          : 'Webhook payment does not match the order';
+        if (!mismatch) await settleOrderPaid({ orderId: order.orderId, paymentId: p.id });
+      }
+    }
   }
   res.json({ ok: true });
 });

@@ -14,9 +14,27 @@ export function pricePerCreditInr() {
 
 // Overridable only in tests so the gateway HTTP call can be mocked.
 let createOrderHttp = null;
+let fetchPaymentHttp = null;
 export function setRazorpayOrderFnForTests(fn) {
   if (process.env.NODE_ENV !== 'test') throw new Error('test override only');
   createOrderHttp = fn;
+}
+export function setRazorpayFetchFnForTests(fn) {
+  if (process.env.NODE_ENV !== 'test') throw new Error('test override only');
+  fetchPaymentHttp = fn;
+}
+
+// Fetch the payment entity from the gateway: the source of truth for status,
+// amount, currency and order binding. Never trust the browser callback alone.
+export async function razorpayFetchPayment(paymentId) {
+  if (!razorpayConfigured()) return null;
+  if (fetchPaymentHttp) return fetchPaymentHttp(paymentId);
+  const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64');
+  const resp = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+    headers: { Authorization: `Basic ${auth}` },
+  });
+  if (!resp.ok) return null;
+  return resp.json(); // { id, order_id, amount (paise), currency, status, ... }
 }
 
 export async function razorpayCreateOrder({ amountInr, receipt }) {

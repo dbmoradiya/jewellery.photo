@@ -81,8 +81,13 @@ These need the owner's own external accounts and are intentionally inert until c
 - **Paid credit top-ups (Razorpay)** — implemented and config-gated. With
   `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET` set, `POST /api/payments/topup` creates a real
   gateway order (`PRICE_PER_CREDIT_INR` sets pricing), `POST /api/payments/verify`
-  validates the checkout HMAC signature, and `POST /api/payments/webhook` validates the
-  raw-body webhook signature (`RAZORPAY_WEBHOOK_SECRET`). Settlement is idempotent:
+  validates the checkout HMAC signature, confirms the order belongs to the requesting
+  member, then fetches the payment from the gateway as the source of truth: it must be
+  `captured`, bound to this order, and match the recorded amount and INR currency exactly.
+  `POST /api/payments/webhook` validates the raw-body webhook signature
+  (`RAZORPAY_WEBHOOK_SECRET`) and applies the same amount/currency checks. The Account
+  page renders the Razorpay checkout only when the backend reports payments enabled.
+  Settlement is idempotent:
   a paid order credits exactly once whether confirmed by callback, webhook, or replays.
   Every balance change lands in the auditable credit ledger (`CreditTransaction`:
   signup grant, admin adjustment, generation spend, failure refund, top-up purchase;
