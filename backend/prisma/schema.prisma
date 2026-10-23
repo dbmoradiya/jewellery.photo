@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum GenerationStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  passwordHash String
+  name         String       @default("")
+  phone        String       @default("")
+  role         Role         @default(USER)
+  credits      Int          @default(0)
+  disabled     Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  generations  Generation[]
+}
+
+model JewelleryType {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  active      Boolean      @default(true)
+  sort        Int          @default(0)
+  generations Generation[]
+}
+
+model Style {
+  id             String       @id @default(cuid())
+  name           String
+  slug           String       @unique
+  promptTemplate String
+  previewImage   String?
+  active         Boolean      @default(true)
+  sort           Int          @default(0)
+  generations    Generation[]
+}
+
+model Generation {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id])
+  typeId      String
+  type        JewelleryType    @relation(fields: [typeId], references: [id])
+  styleId     String
+  style       Style            @relation(fields: [styleId], references: [id])
+  inputPath   String
+  outputPath  String?
+  status      GenerationStatus @default(PENDING)
+  error       String?
+  provider    String           @default("mock")
+  demo        Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  completedAt DateTime?
+}
+
+model Setting {
+  key   String @id
+  value String
+}
