@@ -16,9 +16,7 @@ export default function AdminLayout() {
           <NavLink to="/admin/generations">Generations</NavLink>
           <NavLink to="/admin/settings">Settings</NavLink>
         </nav>
-        <div style={{ marginTop: 'auto', paddingTop: 20 }}>
-          <Link to="/" className="mini-btn" style={{ color: 'rgba(247,242,233,.6)', borderColor: 'var(--line-dark)', display: 'inline-block' }}>← View site</Link>
-        </div>
+        <Link to="/" className="admin__view-site">← View site</Link>
       </aside>
       <main className="admin__main"><Outlet /></main>
     </div>
