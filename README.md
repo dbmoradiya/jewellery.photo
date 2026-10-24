@@ -35,7 +35,7 @@ npm install
 npm run dev          # open the printed URL, usually http://localhost:5173
 ```
 
-If style sample photos are missing on an existing database, just run `npm run seed` again in `backend/` (it restores the bundled samples and keeps admin-uploaded ones), then refresh.
+If style sample photos are missing on an existing database, run `npm run repair:previews` in `backend/`. It only fills missing style sample images and touches nothing else (users, credits, prompts, settings stay as they are). Then refresh.
 
 The frontend dev server proxies `/api` to `localhost:8081`. Sign in with the
 `ADMIN_EMAIL`/`ADMIN_PASSWORD` from `backend/.env` to reach the admin portal at `/admin`,

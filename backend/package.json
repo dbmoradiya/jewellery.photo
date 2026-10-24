@@ -8,6 +8,7 @@
     "start": "node src/index.js",
     "db:push": "prisma db push",
     "seed": "node prisma/seed.js",
+    "repair:previews": "node prisma/repair-previews.js",
     "test": "node --test test/integrations.test.js"
   },
   "dependencies": {

@@ -51,7 +51,7 @@ async function main() {
     console.warn('seed: ADMIN_EMAIL/ADMIN_PASSWORD not set - skipping admin bootstrap (no default credentials are ever created).');
   }
   for (const [name, sort] of types) {
-    await prisma.jewelleryType.upsert({ where: { slug: slug(name) }, create: { name, slug: slug(name), sort }, update: { sort } });
+    await prisma.jewelleryType.upsert({ where: { slug: slug(name) }, create: { name, slug: slug(name), sort }, update: {} });
   }
   for (const [name, promptTemplate, sort] of styles) {
     const s = slug(name);
@@ -63,7 +63,7 @@ async function main() {
     await prisma.style.upsert({
       where: { slug: s },
       create: { name, slug: s, promptTemplate, sort, previewImage },
-      update: { promptTemplate, sort, ...(previewImage ? { previewImage } : {}) },
+      update: previewImage ? { previewImage } : {}, // never overwrite admin-edited prompt/sort/active
     });
   }
   console.log(`seed: ${types.length} types, ${styles.length} styles ready`);
