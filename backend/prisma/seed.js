@@ -10,7 +10,7 @@ const uploadDir = path.resolve(process.env.UPLOAD_DIR || './data');
 fs.mkdirSync(path.join(uploadDir, 'previews'), { recursive: true });
 
 function seedPreview(slug) {
-  const src = path.join(here, 'previews', `${slug}.jpg`);
+  const src = path.join(here, 'previews', `style-${slug}.jpg`);
   if (!fs.existsSync(src)) return null;
   const dest = path.join(uploadDir, 'previews', `seed-${slug}.jpg`);
   fs.copyFileSync(src, dest);
@@ -56,8 +56,15 @@ async function main() {
   for (const [name, promptTemplate, sort] of styles) {
     const s = slug(name);
     const existing = await prisma.style.findUnique({ where: { slug: s } });
-    const previewImage = existing?.previewImage || seedPreview(s);
-    await prisma.style.upsert({ where: { slug: s }, create: { name, slug: s, promptTemplate, sort, previewImage }, update: { promptTemplate, sort } });
+    // Keep an admin-uploaded preview if its file still exists; otherwise (new DB, DB seeded
+    // before previews shipped, or uploads dir moved/emptied) restore the bundled sample.
+    const keep = existing?.previewImage && fs.existsSync(existing.previewImage);
+    const previewImage = keep ? existing.previewImage : seedPreview(s);
+    await prisma.style.upsert({
+      where: { slug: s },
+      create: { name, slug: s, promptTemplate, sort, previewImage },
+      update: { promptTemplate, sort, ...(previewImage ? { previewImage } : {}) },
+    });
   }
   console.log(`seed: ${types.length} types, ${styles.length} styles ready`);
 }
